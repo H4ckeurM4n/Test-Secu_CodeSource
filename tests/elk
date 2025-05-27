@@ -1,0 +1,114 @@
+Analyse des Dashboards existants
+
+L’objectif de cette étape était de prendre connaissance des dashboards utilisés dans l’environnement du SOC Vert, de comprendre leur logique de conception, puis de tenter leur reproduction dans l’environnement ZTD (instance R), en fonction des données disponibles.
+
+⸻
+
+✅ Dashboards reproduits avec succès (partiellement ou totalement)
+
+⸻
+
+1. AppLocker
+
+🎯 Objectif :
+Surveiller les blocages d’exécution de fichiers (.exe, .msi, .dll) liés à la stratégie AppLocker, afin de détecter d’éventuels comportements malveillants ou non conformes.
+
+🔑 Champs exploités :
+	•	winlog.event_id : 8002 à 8007 (événements AppLocker)
+	•	winlog.user_data.FilePath : chemin du fichier exécuté
+	•	host.name : machine concernée
+
+📊 Visualisations mises en place :
+	•	Graphique temporel représentant l’évolution du nombre d’événements par type (8002–8007).
+	•	Camembert des hôtes les plus fréquemment concernés.
+	•	Tableaux listant les fichiers exécutés (FilePath) et leur validité.
+	•	Graphiques distinguant les exécutions valides / invalides.
+	•	Indicateurs de blocage : focus sur les fichiers bloqués (event_id spécifique).
+
+⚠️ Limites rencontrées :
+	•	Le champ FileHash, utilisé dans la visualisation croisée FilePath ↔ FileHash, n’est pas disponible sur R. Visualisation non reproductible.
+	•	D’autres visualisations ont été écartées si elles reposaient sur des logs absents ou des éléments redondants.
+
+⸻
+
+2. User Logon
+
+🎯 Objectif :
+Assurer le suivi des authentifications utilisateurs : connexions réussies et échouées, types de logon, utilisateurs suspects, pics d’activité.
+
+🔑 Champs exploités :
+	•	event.code : 4624 (logon réussi), 4625 (échec)
+	•	winlog.event_data.LogonType : type de connexion (interactive, réseau, etc.)
+	•	user.name, winlog.computer_name
+
+📊 Visualisations mises en place :
+	•	Graphique de tendance des succès / échecs de logon.
+	•	Tableaux récapitulatifs pour :
+	•	Logon de type 3 (connexion réseau)
+	•	Logon interactif (type 2)
+	•	Filtrage des connexions administrateur :
+	•	Exclusion des comptes de service, comptes système, etc.
+	•	Focus sur comptes SYS-T*, Administrator, ansible
+	•	Tableaux des tentatives d’accès invalides :
+	•	Analyse combinée des utilisateurs, machines, types de logon, etc.
+
+⚠️ Limites rencontrées :
+	•	Types de logon 11 (Cached Auth) et 7 (Unlock) non disponibles sur R : certains tableaux sont donc incomplets.
+
+⸻
+
+3. Admin Follow
+
+🎯 Objectif :
+Suivre les activités spécifiques des administrateurs, notamment les connexions et les exécutions de programmes (élevées ou non).
+
+🔑 Champs exploités :
+	•	event.code : 4624 / 4625 (logon), 4688 (exécution de processus)
+	•	winlog.event_data.TokenElevationType : exécution avec élévation de privilèges
+	•	user.name, host.name, process.executable
+
+📊 Visualisations mises en place :
+	•	Graphique du volume de connexions (valides/invalides) pour les comptes SYS-T2-*.
+	•	Tableaux d’authentification des administrateurs :
+	•	Tous les logons
+	•	Logons échoués
+	•	Visualisation des programmes exécutés :
+	•	Exécutions classiques
+	•	Exécutions avec élévation (TokenElevationType : "%%1937")
+
+⸻
+
+❌ Dashboard non reproductible
+
+User Report
+
+📉 Raisons de l’impossibilité de reproduction :
+	•	Index absent sur R : le dashboard repose sur l’index ansible-ad-users, inexistant sur l’environnement ZTD.
+	•	Champs essentiels manquants : par exemple LastLogon.keyword, utilisé dans les visualisations.
+	•	Complexité de mise en œuvre : nécessiterait des enrichissements non disponibles sur R (parsing, ingestion AD…).
+
+⸻
+
+📊 État des logs dans la ZTD (instance R)
+
+⸻
+
+🔹 Logs disponibles :
+	•	Index : winlogbeat-* (logs Windows classiques collectés)
+	•	Événements collectés :
+	•	Authentifications : 4624, 4625
+	•	Exécutions de processus : 4688
+	•	AppLocker partiel : 8002 à 8007
+
+⸻
+
+🔸 Données manquantes :
+	•	Index absents :
+	•	ansible-ad-users (indispensable pour certains dashboards orientés AD)
+	•	Champs non collectés ou non parsés :
+	•	FileHash, LastLogon, winlog.event_data.LogonType détaillé (11, 7, etc.)
+	•	Pipelines incomplets :
+	•	Parsing des événements AppLocker non optimisé
+	•	Absence d’enrichissement AD
+	•	Données non injectées :
+	•	Informations sur les comptes Active Directory (ex. : date de dernier logon)
